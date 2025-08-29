@@ -159,22 +159,6 @@ export const awardXp = (h: ILearningHabit, justCompletedWindow: boolean) => {
     return xp;
 };
 
-// New helper function to recalculate all stats at once.
-const recalculateHabitStats = (habit: ILearningHabit, oldProgress: ILearningProgress[]) => {
-    // 1. Recalculate streak
-    const { streak, longestStreak } = updateStreak(habit);
-    habit.streak = streak;
-    habit.longestStreak = longestStreak;
-
-    // 2. Check if the target was just completed
-    const oldProgressPercent = computeProgressPercent({ ...habit.toObject(), progress: oldProgress });
-    const newProgressPercent = computeProgressPercent(habit.toObject());
-    const justCompleted = newProgressPercent >= 100 && oldProgressPercent < 100;
-
-    // 3. Award XP
-    habit.xp = awardXp(habit, justCompleted);
-};
-
 // CREATE HABIT
 export const createLearningHabit = async (
     data: {
@@ -224,7 +208,7 @@ export const deleteLearningHabit = async (
     return await LearningHabitModel.findOneAndDelete({ _id: id, user: userId }).exec();
 };
 
-// ADD PROGRESS
+// ADD PROGRESS (corrected to use atomic updates)
 export const addHabitProgress = async (
     id: string,
     userId: string | Types.ObjectId,
@@ -233,52 +217,88 @@ export const addHabitProgress = async (
     const habit = await LearningHabitModel.findOne({ _id: id, user: userId }).exec();
     if (!habit) return null;
 
-    // FIX: Create a copy of the habit's progress array BEFORE updating it
-    const oldProgress = JSON.parse(JSON.stringify(habit.progress));
+    const { from, to } = computeWindow(habit);
+    const oldProgressTotal = sumInRange(habit.progress, from, to);
 
-    const currentDate = new Date(progress.date);
-    let existingProgressIndex = -1;
-
-    // Find existing progress based on frequency (daily vs. weekly)
+    // Calculate progress for the current update
+    let newProgressTotal = 0;
     if (habit.frequency === 'daily') {
-        const today = new Date(currentDate);
-        today.setHours(0, 0, 0, 0);
-        existingProgressIndex = habit.progress.findIndex((p: ILearningProgress) => isSameDay(new Date(p.date), today));
-    } else { // weekly
-        existingProgressIndex = habit.progress.findIndex((p: ILearningProgress) => isSameWeek(new Date(p.date), currentDate));
-    }
-
-    // Update or push new progress
-    if (existingProgressIndex !== -1) {
-        habit.progress[existingProgressIndex].count = progress.count;
+        const existingDailyProgress = habit.progress.find(p => isSameDay(new Date(p.date), new Date(progress.date)));
+        newProgressTotal = (existingDailyProgress ? existingDailyProgress.count : 0) + progress.count;
     } else {
-        habit.progress.push({ date: currentDate, count: progress.count });
+        newProgressTotal = oldProgressTotal + progress.count;
     }
 
-    // Recalculate all habit stats after the progress has been updated, using the old progress data
-    recalculateHabitStats(habit, oldProgress);
+    const justCompleted = newProgressTotal >= habit.target && oldProgressTotal < habit.target;
 
-    return await habit.save();
+    const xpToAdd = justCompleted ? (10 + Math.min(50, (habit.streak || 0) * 2)) : 0;
+    const progressDate = new Date(progress.date);
+
+    // Find the existing progress entry for update
+    const existingProgressIndex = habit.progress.findIndex(p =>
+        (habit.frequency === 'daily' && isSameDay(new Date(p.date), progressDate)) ||
+        (habit.frequency === 'weekly' && isSameWeek(new Date(p.date), progressDate))
+    );
+
+    let updatedHabit;
+
+    if (existingProgressIndex !== -1) {
+        // Update an existing progress entry using $set
+        const updatePath = `progress.${existingProgressIndex}.count`;
+        updatedHabit = await LearningHabitModel.findOneAndUpdate(
+            { _id: id, user: userId },
+            {
+                $set: { [updatePath]: newProgressTotal },
+                $inc: { xp: xpToAdd }
+            },
+            { new: true }
+        );
+    } else {
+        // Push a new progress entry using $push
+        updatedHabit = await LearningHabitModel.findOneAndUpdate(
+            { _id: id, user: userId },
+            {
+                $push: { progress: { date: progressDate, count: progress.count } },
+                $inc: { xp: xpToAdd }
+            },
+            { new: true }
+        );
+    }
+
+    // Recalculate streak and longest streak after the atomic update
+    if (updatedHabit) {
+        const { streak, longestStreak } = updateStreak(updatedHabit);
+        updatedHabit.streak = streak;
+        updatedHabit.longestStreak = longestStreak;
+        await updatedHabit.save();
+    }
+
+    return updatedHabit;
 };
 
-// ADD FREEZE
+// ADD FREEZE (corrected to be more robust)
 export const addFreeze = async (
     habitId: string,
     userId: string | Types.ObjectId,
     date: Date
 ): Promise<LearningHabitDocument | null> => {
     const habit = await LearningHabitModel.findOne({ _id: habitId, user: userId }).exec();
-    if (!habit || habit.frequency !== 'daily') return null; // Only daily habits can be frozen
+    if (!habit || habit.frequency !== 'daily' || !canFreeze(habit, date)) {
+        return null;
+    }
 
-    // FIX: Create a copy of the habit's progress array BEFORE updating it
-    const oldProgress = JSON.parse(JSON.stringify(habit.progress));
+    const updatedHabit = await LearningHabitModel.findOneAndUpdate(
+        { _id: habitId, user: userId },
+        { $push: { freezes: { date } } },
+        { new: true }
+    );
 
-    habit.freezes = habit.freezes.filter((f: IFreezeDay) => !isSameDay(new Date(f.date), date));
-    if (!canFreeze(habit, date)) return null;
-    habit.freezes.push({ date });
+    if (updatedHabit) {
+        const { streak, longestStreak } = updateStreak(updatedHabit);
+        updatedHabit.streak = streak;
+        updatedHabit.longestStreak = longestStreak;
+        await updatedHabit.save();
+    }
 
-    // Recalculate stats after freezing, using the old progress data
-    recalculateHabitStats(habit, oldProgress);
-
-    return await habit.save();
+    return updatedHabit;
 };
