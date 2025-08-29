@@ -223,7 +223,7 @@ export const addHabitProgress = async (
     // Calculate progress for the current update
     let newProgressTotal = 0;
     if (habit.frequency === 'daily') {
-        const existingDailyProgress = habit.progress.find(p => isSameDay(new Date(p.date), new Date(progress.date)));
+        const existingDailyProgress = habit.progress.find((p: ILearningProgress) => isSameDay(new Date(p.date), new Date(progress.date)));
         newProgressTotal = (existingDailyProgress ? existingDailyProgress.count : 0) + progress.count;
     } else {
         newProgressTotal = oldProgressTotal + progress.count;
@@ -235,7 +235,7 @@ export const addHabitProgress = async (
     const progressDate = new Date(progress.date);
 
     // Find the existing progress entry for update
-    const existingProgressIndex = habit.progress.findIndex(p =>
+    const existingProgressIndex = habit.progress.findIndex((p: ILearningProgress) =>
         (habit.frequency === 'daily' && isSameDay(new Date(p.date), progressDate)) ||
         (habit.frequency === 'weekly' && isSameWeek(new Date(p.date), progressDate))
     );
