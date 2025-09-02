@@ -1,0 +1,168 @@
+F:.
+|   middleware.ts
+|   structure.txt
+|   
++---app
+|   |   globals.css
+|   |   layout.tsx
+|   |   not-found.tsx
+|   |   
+|   +---(auth)
+|   |   |   layout.tsx
+|   |   |   
+|   |   +---login
+|   |   |       page.tsx
+|   |   |       
+|   |   +---reset-password
+|   |   |       page.tsx
+|   |   |       
+|   |   \---signup
+|   |           page.tsx
+|   |           
+|   +---(dashboard)
+|   |   |   layout.tsx
+|   |   |   
+|   |   +---account
+|   |   |       page.tsx
+|   |   |       
+|   |   +---budget
+|   |   |       page.tsx
+|   |   |       
+|   |   +---certifications
+|   |   |       page.tsx
+|   |   |       
+|   |   +---dashboard
+|   |   |       page.tsx
+|   |   |       
+|   |   +---journals
+|   |   |       page.tsx
+|   |   |       
+|   |   +---learninghabits
+|   |   |       page.tsx
+|   |   |       
+|   |   +---projects
+|   |   |       page.tsx
+|   |   |       
+|   |   +---public-profiles
+|   |   |       page.tsx
+|   |   |       
+|   |   \---tasks
+|   |           page.tsx
+|   |           
+|   +---(public)
+|   |   |   layout.tsx
+|   |   |   page.tsx
+|   |   |   
+|   |   +---about
+|   |   |       page.tsx
+|   |   |       
+|   |   \---contact
+|   |           page.tsx
+|   |           
+|   \---api
+|       +---account
+|       |   \---update-profile
+|       |           route.ts
+|       |           
+|       +---auth
+|       |   +---forgot-password
+|       |   |       route.ts
+|       |   |       
+|       |   +---login
+|       |   |       route.ts
+|       |   |       
+|       |   +---logout
+|       |   |       route.ts
+|       |   |       
+|       |   +---me
+|       |   |       route.ts
+|       |   |       
+|       |   +---reset-password
+|       |   |       route.ts
+|       |   |       
+|       |   +---signup
+|       |   |       route.ts
+|       |   |       
+|       |   \---verify-otp
+|       |           route.ts
+|       |           
+|       +---budget
+|       |   |   route.ts
+|       |   |   
+|       |   \---[id]
+|       |           route.ts
+|       |           
+|       +---certifications
+|       |   |   route.ts
+|       |   |   
+|       |   \---[id]
+|       |           route.ts
+|       |           
+|       +---journal
+|       |   |   route.ts
+|       |   |   
+|       |   \---[id]
+|       |           route.ts
+|       |           
+|       +---learninghabit
+|       |   |   route.ts
+|       |   |   
+|       |   \---[id]
+|       |       |   route.ts
+|       |       |   
+|       |       \---freeze
+|       |               route.ts
+|       |               
+|       +---projects
+|       |   |   route.ts
+|       |   |   
+|       |   \---[id]
+|       |           route.ts
+|       |           
+|       +---public-profiles
+|       |   |   route.ts
+|       |   |   
+|       |   \---[id]
+|       |           route.ts
+|       |           
+|       \---tasks
+|           |   route.ts
+|           |   
+|           \---[id]
+|                   route.ts
+|                   
++---components
+|   +---layout
+|   |       Footer.tsx
+|   |       Navbar.tsx
+|   |       Sidebar.tsx
+|   |       
+|   \---utils
+|           profile-icons.tsx
+|           spinner.tsx
+|           
++---server
+|   |   db.ts
+|   |   utils.ts
+|   |   
+|   \---models
+|           Budget.ts
+|           Certification.ts
+|           Journal.ts
+|           LearningHabit.ts
+|           Profile.ts
+|           Project.ts
+|           PublicProfile.ts
+|           Task.ts
+|           User.ts
+|           
+\---services
+        auth.service.ts
+        budget.service.ts
+        certification.service.ts
+        journal.service.ts
+        learninghabit.service.ts
+        project.service.ts
+        publicProfile.service.ts
+        task.service.ts
+        
