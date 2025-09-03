@@ -1,72 +1,57 @@
-/* src/services/learninghabit.service.ts */
-
 import LearningHabitModel, { ILearningHabit, ILearningProgress, Frequency, IFreezeDay } from "@/server/models/LearningHabit";
 import { HydratedDocument, Types } from "mongoose";
+import { DateTime } from "luxon";
 
 export type LearningHabitDocument = HydratedDocument<ILearningHabit>;
 
-// Utility Date Helpers
-const startOf = (date: Date) => { const d = new Date(date); d.setHours(0, 0, 0, 0); return d; };
-const endOf = (date: Date) => { const d = new Date(date); d.setHours(23, 59, 59, 999); return d; };
+const USER_TIMEZONE = "Asia/Kolkata";
 
-// Calculates the start of the ISO week (Monday).
-const getWeekStart = (date: Date) => {
-    const d = new Date(date);
-    const day = d.getDay();
-    const diff = day === 0 ? 6 : day - 1;
-    d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() - diff);
-    return d;
-};
+// Luxon helpers to ensure all date ops use UTC internally
+const toUtc = (d: Date | string | DateTime) =>
+    d instanceof DateTime ? d.toUTC() : DateTime.fromJSDate(new Date(d)).toUTC();
 
-// Calculates the end of the ISO week (Sunday).
-const getWeekEnd = (date: Date) => {
-    const d = getWeekStart(date);
-    d.setDate(d.getDate() + 6);
-    d.setHours(23, 59, 59, 999);
-    return d;
-};
+const toUserTz = (d: Date | string | DateTime, tz = USER_TIMEZONE) =>
+    d instanceof DateTime ? d.setZone(tz) : DateTime.fromJSDate(new Date(d)).setZone(tz);
 
-// Sums progress for a given date range.
-const sumInRange = (entries: ILearningProgress[], from: Date, to: Date) =>
+const startOfUtcDay = (d: Date | string | DateTime) => toUtc(d).startOf("day");
+const endOfUtcDay = (d: Date | string | DateTime) => toUtc(d).endOf("day");
+const weekStartUtc = (d: Date | string | DateTime) => toUtc(d).startOf("week").plus({ days: 1 }); // ISO Monday start
+const weekEndUtc = (d: Date | string | DateTime) => weekStartUtc(d).plus({ days: 6 }).endOf("day");
+
+const sumInRange = (entries: ILearningProgress[], from: DateTime, to: DateTime) =>
     entries.reduce((acc, p) => {
-        const entryDate = new Date(p.date);
-        return (entryDate >= from && entryDate <= to) ? acc + (p.count || 0) : acc;
+        const entryDate = toUtc(p.date);
+        return entryDate >= from && entryDate <= to ? acc + (p.count || 0) : acc;
     }, 0);
 
-// Checks if two dates fall on the same calendar day.
-function isSameDay(a: Date, b: Date) {
-    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-}
+const isSameDayUtc = (a: Date | string | DateTime, b: Date | string | DateTime) =>
+    startOfUtcDay(a).toMillis() === startOfUtcDay(b).toMillis();
 
-// Checks if two dates fall on the same calendar week (Monday-Sunday).
-function isSameWeek(a: Date, b: Date) {
-    return getWeekStart(a).getTime() === getWeekStart(b).getTime();
-}
+const isSameWeekUtc = (a: Date | string | DateTime, b: Date | string | DateTime) =>
+    weekStartUtc(a).toMillis() === weekStartUtc(b).toMillis();
 
-// Freeze Helpers
-export const canFreeze = (h: ILearningHabit, date: Date) => {
-    const month = date.getMonth();
-    const year = date.getFullYear();
-    const freezesThisMonth = (h.freezes || []).filter(
-        (f: IFreezeDay) => new Date(f.date).getFullYear() === year && new Date(f.date).getMonth() === month
-    );
+// Freeze logic
+export const canFreeze = (h: ILearningHabit, date: Date | string) => {
+    const dateUtc = toUtc(date);
+    const freezesThisMonth = (h.freezes || []).filter(f => {
+        const fd = toUtc(f.date);
+        return fd.year === dateUtc.year && fd.month === dateUtc.month;
+    });
     return freezesThisMonth.length < 2;
 };
 
-// Core Stat Calculations
+// Compute the current progress window depending on frequency (all in UTC)
 export const computeWindow = (h: ILearningHabit) => {
     if (h.frequency === "weekly") {
-        const from = getWeekStart(new Date());
-        const to = getWeekEnd(new Date());
+        const from = weekStartUtc(new Date());
+        const to = weekEndUtc(new Date());
         return { from, to };
     }
-    const today = new Date();
-    const from = startOf(today);
-    const to = endOf(today);
-    return { from, to };
+    const today = toUtc(new Date());
+    return { from: today.startOf("day"), to: today.endOf("day") };
 };
 
+// Compute progress percentage in the current window
 export const computeProgressPercent = (h: ILearningHabit) => {
     const { from, to } = computeWindow(h);
     const done = sumInRange(h.progress || [], from, to);
@@ -74,31 +59,26 @@ export const computeProgressPercent = (h: ILearningHabit) => {
     return Math.max(0, Math.min(100, (done / h.target) * 100));
 };
 
-// UPDATED AND FIXED: Updates the streak and longest streak, handling both daily and weekly logic.
+// Update streak and longest streak using UTC-normalized dates
 export const updateStreak = (h: ILearningHabit) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = toUtc(new Date()).startOf("day");
     let currentStreak = 0;
     let longestStreak = h.longestStreak;
 
     const completedOrFrozenDates = [
-        ...h.progress.filter(p => (p.count || 0) >= h.target).map(p => new Date(p.date)),
-        ...h.freezes.map(f => new Date(f.date))
-    ].sort((a, b) => a.getTime() - b.getTime());
+        ...h.progress.filter(p => (p.count || 0) >= h.target).map(p => toUtc(p.date).startOf("day")),
+        ...h.freezes.map(f => toUtc(f.date).startOf("day")),
+    ].sort((a, b) => a.toMillis() - b.toMillis());
 
     if (h.frequency === 'daily') {
         if (completedOrFrozenDates.length === 0) {
             longestStreak = Math.max(longestStreak, 0);
             return { streak: 0, longestStreak };
         }
-
-        let lastDate = completedOrFrozenDates[completedOrFrozenDates.length - 1];
-
-        const yesterday = new Date(today);
-        yesterday.setDate(today.getDate() - 1);
-
-        const isLastActivityToday = isSameDay(lastDate, today);
-        const isLastActivityYesterday = isSameDay(lastDate, yesterday);
+        const lastDate = completedOrFrozenDates[completedOrFrozenDates.length - 1];
+        const yesterday = today.minus({ days: 1 });
+        const isLastActivityToday = isSameDayUtc(lastDate, today);
+        const isLastActivityYesterday = isSameDayUtc(lastDate, yesterday);
 
         if (!isLastActivityToday && !isLastActivityYesterday) {
             longestStreak = Math.max(longestStreak, 0);
@@ -110,20 +90,21 @@ export const updateStreak = (h: ILearningHabit) => {
         for (let i = completedOrFrozenDates.length - 2; i >= 0; i--) {
             const currentDate = completedOrFrozenDates[i];
             const nextDate = completedOrFrozenDates[i + 1];
-
-            const oneDayInMs = 24 * 60 * 60 * 1000;
-            if (nextDate.getTime() - currentDate.getTime() <= oneDayInMs + 1000) {
+            if (nextDate.diff(currentDate, "days").days <= 1.01) {
                 currentStreak++;
             } else {
                 break;
             }
         }
-    } else { // weekly frequency
+    } else { // weekly
         const weeklyProgress: { [key: string]: number } = {};
         h.progress.forEach(p => {
-            const weekStart = getWeekStart(new Date(p.date)).toISOString();
-            weeklyProgress[weekStart] = (weeklyProgress[weekStart] || 0) + (p.count || 0);
+            const weekStart = weekStartUtc(p.date).toISO();
+            if (weekStart !== null) {  // Skip if toISO returns null
+                weeklyProgress[weekStart] = (weeklyProgress[weekStart] || 0) + (p.count || 0);
+            }
         });
+
 
         const completedWeeks = new Set<string>();
         for (const weekStart in weeklyProgress) {
@@ -131,20 +112,21 @@ export const updateStreak = (h: ILearningHabit) => {
                 completedWeeks.add(weekStart);
             }
         }
-        h.freezes.forEach(f => completedWeeks.add(getWeekStart(new Date(f.date)).toISOString()));
+        h.freezes.forEach(f => {
+            const isoWeekStart = weekStartUtc(f.date).toISO() ?? "";
+            completedWeeks.add(isoWeekStart);
+        });
+
+
         const sortedWeeks = Array.from(completedWeeks).sort();
+        if (sortedWeeks.length === 0) return { streak: 0, longestStreak };
 
-        if (sortedWeeks.length === 0) {
-            return { streak: 0, longestStreak };
-        }
+        const lastWeekStart = DateTime.fromISO(sortedWeeks[sortedWeeks.length - 1]);
+        const thisWeekStart = weekStartUtc(today);
+        const lastWeekStartCalc = thisWeekStart.minus({ weeks: 1 });
 
-        let lastWeekStart = new Date(sortedWeeks[sortedWeeks.length - 1]);
-        const thisWeekStart = getWeekStart(today);
-        const lastWeekStartCalc = new Date(thisWeekStart);
-        lastWeekStartCalc.setDate(thisWeekStart.getDate() - 7);
-
-        const isLastActivityThisWeek = isSameWeek(lastWeekStart, today);
-        const isLastActivityLastWeek = isSameWeek(lastWeekStart, lastWeekStartCalc);
+        const isLastActivityThisWeek = isSameWeekUtc(lastWeekStart, today);
+        const isLastActivityLastWeek = isSameWeekUtc(lastWeekStart, lastWeekStartCalc);
 
         if (!isLastActivityThisWeek && !isLastActivityLastWeek) {
             return { streak: 0, longestStreak };
@@ -153,11 +135,9 @@ export const updateStreak = (h: ILearningHabit) => {
         currentStreak = isLastActivityThisWeek ? 1 : 0;
 
         for (let i = sortedWeeks.length - 2; i >= 0; i--) {
-            const currentWeekDate = new Date(sortedWeeks[i]);
-            const nextWeekDate = new Date(sortedWeeks[i + 1]);
-            const oneWeekInMs = 7 * 24 * 60 * 60 * 1000;
-
-            if (nextWeekDate.getTime() - currentWeekDate.getTime() <= oneWeekInMs + 1000) {
+            const currentWeekDate = DateTime.fromISO(sortedWeeks[i]);
+            const nextWeekDate = DateTime.fromISO(sortedWeeks[i + 1]);
+            if (nextWeekDate.diff(currentWeekDate, "weeks").weeks <= 1.01) {
                 currentStreak++;
             } else {
                 break;
@@ -169,7 +149,7 @@ export const updateStreak = (h: ILearningHabit) => {
     return { streak: currentStreak, longestStreak };
 };
 
-// Awards XP based on completing the daily/weekly window.
+// Award XP based on just completing the window
 export const awardXp = (h: ILearningHabit, justCompletedWindow: boolean) => {
     let xp = h.xp || 0;
     if (justCompletedWindow) {
@@ -178,7 +158,7 @@ export const awardXp = (h: ILearningHabit, justCompletedWindow: boolean) => {
     return xp;
 };
 
-// CREATE HABIT
+// Create a new habit
 export const createLearningHabit = async (
     data: {
         title: string;
@@ -199,14 +179,14 @@ export const createLearningHabit = async (
     return await habit.save();
 };
 
-// GET ALL HABITS FOR A USER
+// Get all habits for a user
 export const getLearningHabitsByUser = async (
     userId: string
 ): Promise<LearningHabitDocument[]> => {
     return await LearningHabitModel.find({ user: userId }).sort({ createdAt: -1 }).exec();
 };
 
-// UPDATE HABIT
+// Update a habit by id and user
 export const updateLearningHabit = async (
     id: string,
     userId: string | Types.ObjectId,
@@ -219,7 +199,7 @@ export const updateLearningHabit = async (
     ).exec();
 };
 
-// DELETE HABIT
+// Delete habit
 export const deleteLearningHabit = async (
     id: string,
     userId: string | Types.ObjectId
@@ -227,23 +207,24 @@ export const deleteLearningHabit = async (
     return await LearningHabitModel.findOneAndDelete({ _id: id, user: userId }).exec();
 };
 
-// Add or update progress for a habit
+// Add or update habit progress
 export const addHabitProgress = async (
     id: string,
     userId: string | Types.ObjectId,
     progress: { date: Date; count: number }
 ): Promise<LearningHabitDocument | null> => {
     const habit = await LearningHabitModel.findOne({ _id: id, user: userId }).exec();
-    if (!habit) {
-        return null;
-    }
+    if (!habit) return null;
 
     const { from, to } = computeWindow(habit);
     const oldProgressTotal = sumInRange(habit.progress, from, to);
-    const progressDate = new Date(progress.date);
+
+    // The Fix: Create the date object in the user's timezone first
+    const progressDateUserTz = toUserTz(new Date()).toJSDate();
+    const progressDateUtc = startOfUtcDay(progressDateUserTz);
 
     const existingProgressIndex = habit.progress.findIndex((p: ILearningProgress) =>
-        isSameDay(new Date(p.date), progressDate)
+        isSameDayUtc(p.date, progressDateUtc)
     );
 
     let updatedHabit;
@@ -259,7 +240,7 @@ export const addHabitProgress = async (
     } else {
         updatedHabit = await LearningHabitModel.findOneAndUpdate(
             { _id: id, user: userId },
-            { $push: { progress: { date: progressDate, count: progress.count } } },
+            { $push: { progress: { date: progressDateUtc.toJSDate(), count: progress.count } } },
             { new: true }
         );
     }
@@ -275,12 +256,10 @@ export const addHabitProgress = async (
         updatedHabit.xp += xpToAdd;
         await updatedHabit.save();
     }
-
     return updatedHabit;
 };
 
-
-// FIX: New and correct implementation for removing progress
+// Remove habit progress or freeze on a specific date
 export const removeHabitProgress = async (
     id: string,
     userId: string | Types.ObjectId,
@@ -289,42 +268,28 @@ export const removeHabitProgress = async (
     const habit = await LearningHabitModel.findOne({ _id: id, user: userId }).exec();
     if (!habit) return null;
 
-    // Normalize input date to start of day for matching
-    const normalizedDate = new Date(date);
-    normalizedDate.setHours(0, 0, 0, 0);
-
+    const normalizedDateUtc = startOfUtcDay(date);
     const { from, to } = computeWindow(habit);
     const oldProgressTotal = sumInRange(habit.progress, from, to);
     const wasCompleted = oldProgressTotal >= habit.target;
 
-    // Find progress by normalized date
-    const progressToRemove = habit.progress.find((p: ILearningProgress) => {
-        const pDate = new Date(p.date);
-        pDate.setHours(0, 0, 0, 0);
-        return pDate.getTime() === normalizedDate.getTime();
-    });
+    const progressToRemove = habit.progress.find((p: ILearningProgress) =>
+        isSameDayUtc(p.date, normalizedDateUtc)
+    );
 
-    // Find freeze by normalized date
-    const freezeToRemove = habit.freezes.find((f: IFreezeDay) => {
-        const fDate = new Date(f.date);
-        fDate.setHours(0, 0, 0, 0);
-        return fDate.getTime() === normalizedDate.getTime();
-    });
+    const freezeToRemove = habit.freezes.find((f: ILearningProgress) =>
+        isSameDayUtc(f.date, normalizedDateUtc)
+    );
 
     let updateObject = {};
 
     if (progressToRemove) {
-        // Prefer to remove by _id if available for exact match
-        if (progressToRemove._id) {
-            updateObject = { $pull: { progress: { _id: progressToRemove._id } } };
-        } else {
-            // fallback to date match if no _id
-            updateObject = { $pull: { progress: { date: normalizedDate } } };
-        }
+        updateObject = progressToRemove._id
+            ? { $pull: { progress: { _id: progressToRemove._id } } }
+            : { $pull: { progress: { date: normalizedDateUtc.toJSDate() } } };
     } else if (freezeToRemove) {
-        updateObject = { $pull: { freezes: { date: normalizedDate } } };
+        updateObject = { $pull: { freezes: { date: normalizedDateUtc.toJSDate() } } };
     } else {
-        // No matching progress or freeze found to remove
         return habit;
     }
 
@@ -347,26 +312,30 @@ export const removeHabitProgress = async (
         updatedHabit.longestStreak = longestStreak;
         await updatedHabit.save();
     }
-
     return updatedHabit;
 };
 
-
-
-// ADD FREEZE
+// Add a freeze day (only for daily habits)
 export const addFreeze = async (
     habitId: string,
     userId: string | Types.ObjectId,
     date: Date
 ): Promise<LearningHabitDocument | null> => {
     const habit = await LearningHabitModel.findOne({ _id: habitId, user: userId }).exec();
-    if (!habit || habit.frequency !== 'daily' || !canFreeze(habit, date) || habit.progress.some((p: ILearningProgress) => isSameDay(new Date(p.date), date))) {
+    if (
+        !habit ||
+        habit.frequency !== 'daily' ||
+        !canFreeze(habit, date) ||
+        habit.progress.some((p: ILearningProgress) => isSameDayUtc(p.date, date))
+    ) {
         return null;
     }
 
+    const freezeDateUtc = startOfUtcDay(date);
+
     const updatedHabit = await LearningHabitModel.findOneAndUpdate(
         { _id: habitId, user: userId },
-        { $push: { freezes: { date } } },
+        { $push: { freezes: { date: freezeDateUtc.toJSDate() } } },
         { new: true }
     );
 
@@ -376,6 +345,5 @@ export const addFreeze = async (
         updatedHabit.longestStreak = longestStreak;
         await updatedHabit.save();
     }
-
     return updatedHabit;
 };
