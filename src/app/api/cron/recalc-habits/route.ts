@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { recalcAllHabitsAtMidnight } from "@/services/learninghabit.service";
+import { connectToDB } from "@/server/db";
 
-const SECRET = process.env.CRON_SECRET;
 
 export async function GET(req: NextRequest) {
     try {
+        await connectToDB();
         await recalcAllHabitsAtMidnight();
         return NextResponse.json({ success: true, message: "Habits recalculated" });
     } catch (error) {
