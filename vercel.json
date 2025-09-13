@@ -1,0 +1,8 @@
+{
+    "crons": [
+        {
+            "path": "/api/cron/recalc-habits",
+            "schedule": "30 18 * * *"
+        }
+    ]
+}
