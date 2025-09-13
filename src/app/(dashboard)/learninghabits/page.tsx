@@ -337,8 +337,13 @@ export default function LearningHabitPage() {
     // Check if habit is completed for today/this week
     const isTodayCompleted = (h: LearningHabit) => {
         const today = new Date();
-        if (h.frequency === 'daily') {
-            return h.progress.some(p => isSameDay(new Date(p.date), today));
+
+        if (h.frequency === "daily") {
+            const todayProgress = h.progress.filter(p =>
+                isSameDay(new Date(p.date), today)
+            );
+            const totalCount = todayProgress.reduce((sum, p) => sum + p.count, 0);
+            return totalCount >= h.target;
         } else {
             return isWeeklyTargetMet(h);
         }
@@ -380,6 +385,8 @@ export default function LearningHabitPage() {
                             const today = new Date();
                             today.setHours(0, 0, 0, 0);
                             const doneToday = isTodayCompleted(h);
+                            const frozenToday = (h.freezes || []).some((f) => isSameDay(new Date(f.date), today));
+
                             const currentMonthInfo = dateInfo(h._id);
                             const calendarDays = getCalendarDays(currentMonthInfo.year, currentMonthInfo.month);
 
@@ -488,18 +495,24 @@ export default function LearningHabitPage() {
                                             </button>
                                         ) : (
                                             <>
+                                                {/* ✅ Disable mark if today is frozen */}
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
-                                                        openProgressModal(h);
+                                                        if (!frozenToday) openProgressModal(h);
                                                     }}
-                                                    className="px-2 py-1 rounded flex items-center justify-center text-white bg-green-600 hover:bg-green-700 cursor-pointer"
+                                                    disabled={frozenToday}
+                                                    className={`px-2 py-1 rounded flex items-center justify-center text-white ${frozenToday
+                                                        ? "bg-gray-600 cursor-not-allowed opacity-50"
+                                                        : "bg-green-600 hover:bg-green-700 cursor-pointer"
+                                                        }`}
                                                 >
                                                     <FaCheckCircle className="inline-block mr-1" /> Mark
                                                 </button>
+
                                                 {h.frequency === 'daily' && (
                                                     <button
-                                                        disabled={currentMonthFreezes >= 2}
+                                                        disabled={frozenToday || currentMonthFreezes >= 2}
                                                         title={
                                                             currentMonthFreezes >= 2
                                                                 ? "No freezes left this month"
@@ -509,7 +522,7 @@ export default function LearningHabitPage() {
                                                             e.stopPropagation();
                                                             freezeToday(h);
                                                         }}
-                                                        className="px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 cursor-pointer flex items-center justify-center"
+                                                        className={`px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 flex items-center justify-center ${frozenToday ? "cursor-not-allowed" : "cursor-pointer"}`}
                                                     >
                                                         <FaSnowflake className="inline-block mr-1" /> Freeze
                                                     </button>
@@ -536,6 +549,7 @@ export default function LearningHabitPage() {
                                             <FiTrash2 className="inline-block mr-1" /> Delete
                                         </button>
                                     </div>
+
 
                                     {/* Weekday Labels */}
                                     <div className="grid grid-cols-7 gap-1 text-zinc-400 text-xs font-semibold mb-1 select-none text-center">

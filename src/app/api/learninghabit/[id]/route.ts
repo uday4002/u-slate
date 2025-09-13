@@ -1,7 +1,5 @@
-/* src/app/api/learninghabit/[id]/route.ts */
-
 import { NextResponse, NextRequest } from "next/server";
-import { updateLearningHabit, deleteLearningHabit, addHabitProgress, removeHabitProgress, addFreeze } from "@/services/learninghabit.service";
+import { updateLearningHabit, deleteLearningHabit, addHabitProgress, removeHabitProgress } from "@/services/learninghabit.service";
 import { getUserIdFromToken } from "@/server/utils";
 import { connectToDB } from "@/server/db";
 
@@ -34,8 +32,9 @@ export const PUT = async (req: NextRequest, { params }: { params: Promise<{ id: 
 
         return NextResponse.json(result);
     } catch (err) {
-        console.error("Error in PUT handler:", err);
-        return NextResponse.json({ error: "Failed to update habit" }, { status: 500 });
+        const errorMessage = (err instanceof Error) ? err.message : "Something went wrong.";
+        return NextResponse.json({ success: false, message: errorMessage },
+            { status: 400 });
     }
 };
 
