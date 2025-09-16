@@ -32,11 +32,13 @@ export const recalculateHabitMetrics = (habit: ILearningHabit): void => {
 
     const target = Math.max(1, habit.target ?? 1);
 
+    // Days where target is met or exceeded
     const completedDaysSet = new Set<string>();
     for (const [k, sum] of countsByDate.entries()) {
         if (sum >= target) completedDaysSet.add(k);
     }
 
+    // Days frozen to optionally preserve streak continuity
     const frozenDaysSet = new Set<string>();
     if (Array.isArray(habit.freezes)) {
         for (const f of habit.freezes) {
@@ -51,17 +53,17 @@ export const recalculateHabitMetrics = (habit: ILearningHabit): void => {
         .startOf("day")
         .toUTC();
 
+    // Combine both completed and frozen days for streak continuity
     const unionDates: DateTime[] = Array.from(new Set([...completedDaysSet, ...frozenDaysSet]))
-        .map((iso) => DateTime.fromISO(iso, { zone: "utc" }).startOf("day"));
-
-    const relevantPastDates = unionDates
-        .filter((d) => d <= todayUserMidnightUtc)
+        .map((iso) => DateTime.fromISO(iso, { zone: "utc" }).startOf("day"))
+        .filter(d => d <= todayUserMidnightUtc) // Only consider past or today
         .sort((a, b) => a.toMillis() - b.toMillis());
 
     let streak = 0;
 
-    if (relevantPastDates.length > 0) {
-        let currentDay = relevantPastDates[relevantPastDates.length - 1];
+    // Calculate current streak by counting back from the most recent date
+    if (unionDates.length > 0) {
+        let currentDay = unionDates[unionDates.length - 1];
 
         while (true) {
             const key = currentDay.toISODate()!;
@@ -76,11 +78,11 @@ export const recalculateHabitMetrics = (habit: ILearningHabit): void => {
                 break;
             }
         }
-    } else {
-        streak = 0;
     }
 
-    const sortedRelevantDates = Array.from(new Set([...completedDaysSet, ...frozenDaysSet]))
+    // Calculate longest streak considering consecutive completed days 
+    // with frozen days allowed for continuity
+    const sortedRelevantDates: DateTime[] = Array.from(new Set([...completedDaysSet, ...frozenDaysSet]))
         .map((iso) => DateTime.fromISO(iso, { zone: "utc" }).startOf("day"))
         .sort((a, b) => a.toMillis() - b.toMillis());
 
@@ -92,7 +94,7 @@ export const recalculateHabitMetrics = (habit: ILearningHabit): void => {
         if (lastDate) {
             const diff = dt.diff(lastDate, "days").days;
             if (diff > 1) {
-                currentCompletedRun = 0;
+                currentCompletedRun = 0; // Missed days reset the streak run
             }
         }
 
@@ -113,6 +115,7 @@ export const recalculateHabitMetrics = (habit: ILearningHabit): void => {
     habit.longestStreak = longestStreak;
     habit.xp = totalXp;
 };
+
 
 export async function recalcAllHabitsAtMidnight() {
     const habits = await LearningHabitModel.find({});
