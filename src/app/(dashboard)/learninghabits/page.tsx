@@ -630,7 +630,7 @@ export default function LearningHabitPage() {
                             name="title"
                             value={form.title}
                             onChange={onChange}
-                            placeholder="eg: Solve 1 DSA problem daily"
+                            placeholder="Habit Title"
                             className="p-2 mb-2 w-full rounded-xl border border-zinc-800 bg-zinc-950 text-white placeholder-zinc-500 outline-none"
                             autoFocus
                         />
@@ -659,7 +659,7 @@ export default function LearningHabitPage() {
                             min={1}
                             value={form.target || ""}
                             onChange={onChange}
-                            placeholder="Target"
+                            placeholder="eg. Solve 3 problems per day"
                             className="p-2 mb-3 w-full rounded-xl border border-zinc-800 bg-zinc-950 text-white placeholder-zinc-500 outline-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
 
