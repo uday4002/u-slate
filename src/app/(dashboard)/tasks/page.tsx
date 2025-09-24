@@ -153,7 +153,7 @@ export default function TasksPage() {
         );
 
     return (
-        <div className="bg-zinc-950 min-h-screen p-4 sm:p-12 min-w-calc(screen-64px)">
+        <div className="bg-zinc-950 min-h-screen p-4 sm:p-6 w-full">
             <div className="w-full ">
                 {/* Header */}
                 <div className="mb-6 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">

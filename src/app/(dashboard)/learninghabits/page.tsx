@@ -209,21 +209,6 @@ export default function LearningHabitPage() {
     }
 
     // FIX: Pass the exact date to the server
-    async function unmarkToday(h: LearningHabit) {
-        if (!confirm("Are you sure you want to unmark today's progress?")) return;
-        setSubmitting(true);
-        try {
-            const today = new Date();
-            const res = await axios.put(`/api/learninghabit/${h._id}`, { unmark: today.toISOString() });
-            setHabits((hs) => hs.map((habit) => (habit._id === h._id ? res.data : habit)));
-            setSuccess("Progress unmarked successfully.");
-        } catch (e: any) {
-            setError(e?.response?.data?.error || "Failed to unmark progress");
-            setSuccess("");
-        } finally {
-            setSubmitting(false);
-        }
-    }
 
     // FIX: Pass the exact date to the server
     async function freezeToday(h: LearningHabit) {
@@ -351,9 +336,9 @@ export default function LearningHabitPage() {
 
 
     return (
-        <div className="bg-zinc-950 min-h-screen p-4 sm:p-12 flex flex-col items-center">
+        <div className="bg-zinc-950 min-h-screen p-4 sm:p-6 flex flex-col">
             {/* Header */}
-            <div className="w-full max-w-7xl flex justify-between items-center mb-6 px-2 sm:px-0">
+            <div className="w-full flex justify-between items-center mb-6 px-2 sm:px-0">
                 <h1 className="text-xl sm:text-4xl font-bold text-white flex items-center gap-2">
                     <FiBookOpen size={32} /> Learning Habits
                 </h1>
@@ -366,13 +351,13 @@ export default function LearningHabitPage() {
             </div>
 
             {/* Global Messages */}
-            {error && <div className="text-red-600 max-w-7xl w-full rounded p-2 mb-4 animate-fadeInOut">{error}</div>}
-            {success && <div className="text-green-600 max-w-7xl w-full rounded p-2 mb-4 bg-green-500/20">{success}</div>}
+            {error && <div className="text-red-600 w-full rounded p-2 mb-4 animate-fadeInOut">{error}</div>}
+            {success && <div className="text-green-600 w-full rounded p-2 mb-4 bg-green-500/20">{success}</div>}
 
             {loading ? (
                 <Spinner />
             ) : habits.length === 0 ? (
-                <div className="flex flex-col items-center text-zinc-400 gap-2 max-w-7xl w-full text-center mt-12">
+                <div className="flex flex-col items-center text-zinc-400 gap-2 w-full text-center mt-12">
                     <FiBookOpen className="text-6xl" />
                     <div>No habits found.</div>
                     <div>Create one to start tracking your learning journey!</div>
@@ -380,7 +365,7 @@ export default function LearningHabitPage() {
             ) : (
                 <>
                     {/* Habits Grid */}
-                    <div className="max-w-7xl w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                    <div className="w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                         {habits.map((h) => {
                             const today = new Date();
                             today.setHours(0, 0, 0, 0);
@@ -483,51 +468,41 @@ export default function LearningHabitPage() {
 
                                     {/* Action Buttons */}
                                     <div className="grid grid-cols-2 sm:flex sm:flex-nowrap sm:justify-between gap-2 mb-4 text-xs sm:text-[11px] md:text-[10px]">
-                                        {doneToday ? (
+                                        {/* Always show Mark and Freeze, but disable if doneToday or frozenToday (for Mark), and for Freeze if frozenToday or freeze limit reached */}
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (!doneToday && !frozenToday) openProgressModal(h);
+                                            }}
+                                            disabled={doneToday || frozenToday}
+                                            className={`px-2 py-1 rounded flex items-center justify-center text-white ${doneToday || frozenToday
+                                                ? "bg-gray-600 cursor-not-allowed opacity-50"
+                                                : "bg-green-600 hover:bg-green-700 cursor-pointer"
+                                                }`}
+                                        >
+                                            <FaCheckCircle className="inline-block mr-1" /> Mark
+                                        </button>
+
+                                        {h.frequency === 'daily' && (
                                             <button
+                                                disabled={doneToday || frozenToday || currentMonthFreezes >= 2}
+                                                title={
+                                                    currentMonthFreezes >= 2
+                                                        ? "No freezes left this month"
+                                                        : doneToday
+                                                            ? "Already completed today"
+                                                            : frozenToday
+                                                                ? "Already frozen today"
+                                                                : "Freeze today (only allowed on uncompleted days)"
+                                                }
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    unmarkToday(h);
+                                                    if (!doneToday && !frozenToday && currentMonthFreezes < 2) freezeToday(h);
                                                 }}
-                                                className="col-span-2 px-2 py-1 rounded flex items-center justify-center text-white bg-red-600 hover:bg-red-700 cursor-pointer"
+                                                className={`px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 flex items-center justify-center ${doneToday || frozenToday ? "cursor-not-allowed" : "cursor-pointer"}`}
                                             >
-                                                <FaRegCircle className="inline-block mr-1" /> Unmark
+                                                <FaSnowflake className="inline-block mr-1" /> Freeze
                                             </button>
-                                        ) : (
-                                            <>
-                                                {/* ✅ Disable mark if today is frozen */}
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        if (!frozenToday) openProgressModal(h);
-                                                    }}
-                                                    disabled={frozenToday}
-                                                    className={`px-2 py-1 rounded flex items-center justify-center text-white ${frozenToday
-                                                        ? "bg-gray-600 cursor-not-allowed opacity-50"
-                                                        : "bg-green-600 hover:bg-green-700 cursor-pointer"
-                                                        }`}
-                                                >
-                                                    <FaCheckCircle className="inline-block mr-1" /> Mark
-                                                </button>
-
-                                                {h.frequency === 'daily' && (
-                                                    <button
-                                                        disabled={frozenToday || currentMonthFreezes >= 2}
-                                                        title={
-                                                            currentMonthFreezes >= 2
-                                                                ? "No freezes left this month"
-                                                                : "Freeze today (only allowed on uncompleted days)"
-                                                        }
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            freezeToday(h);
-                                                        }}
-                                                        className={`px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 flex items-center justify-center ${frozenToday ? "cursor-not-allowed" : "cursor-pointer"}`}
-                                                    >
-                                                        <FaSnowflake className="inline-block mr-1" /> Freeze
-                                                    </button>
-                                                )}
-                                            </>
                                         )}
                                         <button
                                             onClick={(e) => {

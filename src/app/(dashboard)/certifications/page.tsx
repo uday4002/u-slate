@@ -170,7 +170,7 @@ export default function CertificationsPage() {
     }
 
     return (
-        <div className="bg-zinc-950 min-h-screen p-4 sm:p-12 flex flex-col items-start">
+        <div className="bg-zinc-950 min-h-screen p-4 sm:p-6 flex flex-col items-start w-full">
             {/* Header */}
             <div className="w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
                 <h1 className="text-xl sm:text-4xl font-bold text-white">
@@ -219,7 +219,7 @@ export default function CertificationsPage() {
                     </p>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-full">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
                     {filtered.map((c) => (
                         <div
                             key={c._id}

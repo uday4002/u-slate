@@ -146,7 +146,7 @@ export default function JournalsPage() {
     });
 
     return (
-        <div className="bg-zinc-950 min-h-screen p-4 sm:p-12 flex flex-col items-start">
+        <div className="bg-zinc-950 min-h-screen p-4 sm:p-6 flex flex-col items-start w-full">
             {/* Header */}
             <div className="w-full flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 sm:gap-0">
                 <h1 className="text-xl sm:text-4xl font-bold text-white">Journals</h1>
@@ -228,7 +228,7 @@ export default function JournalsPage() {
                     <p className="text-sm sm:text-base mt-1 text-center">Start by adding a new journal entry.</p>
                 </div>
             ) : (
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-6xl">
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
                     {filteredJournals.map((j) => (
                         <div
                             key={j._id}

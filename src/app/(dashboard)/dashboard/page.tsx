@@ -265,7 +265,7 @@ export default function DashboardPage() {
     }
 
     return (
-        <div className="bg-zinc-950 min-h-screen p-4 sm:p-12 text-white">
+        <div className="bg-zinc-950 min-h-screen p-4 sm:p-6 text-white w-full">
             <h1 className="text-4xl font-bold mb-8 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-pink-500">
                 Dashboard
             </h1>

@@ -158,7 +158,7 @@ export default function ProjectsPage() {
 
 
     return (
-        <div className="bg-zinc-950 min-h-screen p-4 sm:p-12 flex flex-col items-start font-sans">
+        <div className="bg-zinc-950 min-h-screen p-4 sm:p-6 flex flex-col items-start font-sans w-full">
             {/* Header */}
             <div className="w-full flex justify-between items-center mb-6">
                 <h1 className="text-xl sm:text-4xl font-bold text-white">Projects</h1>
@@ -192,7 +192,7 @@ export default function ProjectsPage() {
                     </p>
                 </div>
             ) : (
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-6xl">
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
                     {projects.map((p) => (
                         <div
                             key={p._id}

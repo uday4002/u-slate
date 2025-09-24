@@ -20,100 +20,87 @@ const normalizeDateToUTC = (date: Date | string | DateTime): DateTime => {
 
 
 export const recalculateHabitMetrics = (habit: ILearningHabit): void => {
-    const countsByDate = new Map<string, number>();
-    if (Array.isArray(habit.progress)) {
-        for (const p of habit.progress) {
-            if (!p || !p.date) continue;
-            const key = normalizeDateToUTC(p.date).toISODate()!;
-            const current = countsByDate.get(key) ?? 0;
-            countsByDate.set(key, current + (p.count ?? 0));
-        }
-    }
+    if (!habit || !Array.isArray(habit.progress)) return;
 
-    const target = Math.max(1, habit.target ?? 1);
+    // Sort progress by date ascending
+    const sortedProgress = [...habit.progress].sort((a, b) => {
+        return normalizeDateToUTC(a.date).toMillis() - normalizeDateToUTC(b.date).toMillis();
+    });
 
-    // Days where target is met or exceeded
-    const completedDaysSet = new Set<string>();
-    for (const [k, sum] of countsByDate.entries()) {
-        if (sum >= target) completedDaysSet.add(k);
-    }
-
-    // Days frozen to optionally preserve streak continuity
-    const frozenDaysSet = new Set<string>();
-    if (Array.isArray(habit.freezes)) {
-        for (const f of habit.freezes) {
-            const freezeDate = ("date" in (f as IFreezeDay) ? (f as IFreezeDay).date : f) as Date;
-            if (!freezeDate) continue;
-            frozenDaysSet.add(normalizeDateToUTC(freezeDate).toISODate()!);
-        }
-    }
-
-    const todayUserMidnightUtc = DateTime.now()
-        .setZone(USER_TIMEZONE)
-        .startOf("day")
-        .toUTC();
-
-    // Combine both completed and frozen days for streak continuity
-    const unionDates: DateTime[] = Array.from(new Set([...completedDaysSet, ...frozenDaysSet]))
-        .map((iso) => DateTime.fromISO(iso, { zone: "utc" }).startOf("day"))
-        .filter(d => d <= todayUserMidnightUtc) // Only consider past or today
-        .sort((a, b) => a.toMillis() - b.toMillis());
-
-    let streak = 0;
-
-    // Calculate current streak by counting back from the most recent date
-    if (unionDates.length > 0) {
-        let currentDay = unionDates[unionDates.length - 1];
-
-        while (true) {
-            const key = currentDay.toISODate()!;
-            if (completedDaysSet.has(key)) {
-                streak += 1;
-                currentDay = currentDay.minus({ days: 1 });
-                continue;
-            } else if (frozenDaysSet.has(key)) {
-                currentDay = currentDay.minus({ days: 1 });
-                continue;
-            } else {
-                break;
-            }
-        }
-    }
-
-    // Calculate longest streak considering consecutive completed days 
-    // with frozen days allowed for continuity
-    const sortedRelevantDates: DateTime[] = Array.from(new Set([...completedDaysSet, ...frozenDaysSet]))
-        .map((iso) => DateTime.fromISO(iso, { zone: "utc" }).startOf("day"))
-        .sort((a, b) => a.toMillis() - b.toMillis());
+    // Prepare freeze dates (ISO strings)
+    const freezeDates = new Set((habit.freezes || []).map(f => normalizeDateToUTC(f.date).toISODate()));
 
     let longestStreak = 0;
-    let currentCompletedRun = 0;
+    let xp = 0;
+
+    // Calculate current streak up to today (or last progress date)
+    let currentStreak = 0;
+    let streak = 0;
     let lastDate: DateTime | null = null;
 
-    for (const dt of sortedRelevantDates) {
+    for (let i = 0; i < sortedProgress.length; i++) {
+        const entry = sortedProgress[i];
+        const entryDate = normalizeDateToUTC(entry.date);
+        const entryIso = entryDate.toISODate();
+
+        // Only count progress if not frozen and meets target
+        if (freezeDates.has(entryIso) || entry.count < habit.target) {
+            streak = 0;
+            lastDate = entryDate;
+            continue;
+        }
+
         if (lastDate) {
-            const diff = dt.diff(lastDate, "days").days;
-            if (diff > 1) {
-                currentCompletedRun = 0; // Missed days reset the streak run
+            let expected = habit.frequency === "weekly"
+                ? lastDate.plus({ weeks: 1 })
+                : lastDate.plus({ days: 1 });
+            let gap = habit.frequency === "weekly"
+                ? entryDate.diff(expected, "weeks").weeks
+                : entryDate.diff(expected, "days").days;
+            if (gap > 0) {
+                // Check if all gap days are frozen
+                let allFrozen = true;
+                for (let j = 1; j <= gap; j++) {
+                    const gapDate = habit.frequency === "weekly"
+                        ? expected.plus({ weeks: j - 1 })
+                        : expected.plus({ days: j - 1 });
+                    if (!freezeDates.has(gapDate.toISODate())) {
+                        allFrozen = false;
+                        break;
+                    }
+                }
+                if (!allFrozen) {
+                    streak = 0;
+                }
             }
         }
-
-        const key = dt.toISODate()!;
-        if (completedDaysSet.has(key)) {
-            currentCompletedRun += 1;
-            if (currentCompletedRun > longestStreak) longestStreak = currentCompletedRun;
-        }
-
-        lastDate = dt;
+        streak += 1;
+        if (streak > longestStreak) longestStreak = streak;
+        lastDate = entryDate;
+        // XP: 10 per streak day, 1 per count above target
+        xp += 10 + Math.max(0, entry.count - habit.target);
     }
 
-    const baseXp = completedDaysSet.size * 10;
-    const streakBonus = streak * 2;
-    const totalXp = baseXp + streakBonus;
+    // Now, calculate current streak up to today (or last progress date)
+    // If the last progress entry is today (or this week), streak is currentStreak
+    if (sortedProgress.length > 0) {
+        let today = DateTime.now().setZone(USER_TIMEZONE).startOf("day").toUTC();
+        let lastProgressDate = normalizeDateToUTC(sortedProgress[sortedProgress.length - 1].date);
+        let isCurrent = false;
+        if (habit.frequency === "daily") {
+            isCurrent = lastProgressDate.toISODate() === today.toISODate();
+        } else {
+            // For weekly, check if last progress is in the same week as today
+            isCurrent = lastProgressDate.hasSame(today, "week");
+        }
+        currentStreak = isCurrent ? streak : 0;
+    } else {
+        currentStreak = 0;
+    }
 
-    habit.streak = streak;
+    habit.streak = currentStreak;
     habit.longestStreak = longestStreak;
-    habit.xp = totalXp;
+    habit.xp = xp;
 };
 
 
@@ -198,24 +185,6 @@ export const addHabitProgress = async (
     return habit;
 };
 
-// Remove progress from a habit
-export const removeHabitProgress = async (
-    habitId: string,
-    userId: string,
-    date: Date
-): Promise<ILearningHabit | null> => {
-    const habit = await LearningHabitModel.findOne({ _id: habitId, user: userId });
-    if (!habit) return null;
-
-    const normalizedDateIso = normalizeDateToUTC(date).toISODate();
-    habit.progress = habit.progress.filter(
-        (p: ILearningProgress) => normalizeDateToUTC(p.date).toISODate() !== normalizedDateIso
-    );
-
-    recalculateHabitMetrics(habit);
-    await habit.save();
-    return habit;
-};
 
 // Add a freeze day
 export const addFreeze = async (

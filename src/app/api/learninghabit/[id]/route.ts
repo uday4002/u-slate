@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from "next/server";
-import { updateLearningHabit, deleteLearningHabit, addHabitProgress, removeHabitProgress } from "@/services/learninghabit.service";
+import { updateLearningHabit, deleteLearningHabit, addHabitProgress } from "@/services/learninghabit.service";
 import { getUserIdFromToken } from "@/server/utils";
 import { connectToDB } from "@/server/db";
 
@@ -19,9 +19,6 @@ export const PUT = async (req: NextRequest, { params }: { params: Promise<{ id: 
             const date = patch.progress.date ? new Date(patch.progress.date) : new Date();
             const count = Number(patch.progress.count) || 1;
             result = await addHabitProgress(id, userId, { date, count });
-        } else if (patch.unmark) {
-            const date = patch.unmark ? new Date(patch.unmark) : new Date();
-            result = await removeHabitProgress(id, userId, date);
         } else {
             result = await updateLearningHabit(id, userId, patch);
         }
