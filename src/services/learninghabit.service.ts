@@ -61,19 +61,26 @@ export const recalculateHabitMetrics = (habit: ILearningHabit): void => {
         const entry = progressMap.get(checkDateIso);
         const isFrozen = freezeDates.has(checkDateIso);
 
+        const isToday = checkDate.toISODate() === now.startOf("day").toISODate();
+
         if (entry && entry.count >= habit.target) {
             currentStreak++;
             xp += 10 + Math.max(0, entry.count - habit.target);
             if (currentStreak > longestStreak) longestStreak = currentStreak;
         } else if (isFrozen) {
-            // Frozen → streak preserved, but does NOT increment currentStreak, XP, or longestStreak
-            // Do nothing
+            // Frozen → streak preserved, but does NOT increment
+        } else if (isToday) {
+            // Today is still ongoing → preserve current streak
+            // Do nothing, allow user to enter progress later
         } else {
+            // Missed day → streak resets
             if (currentStreak > longestStreak) longestStreak = currentStreak;
             currentStreak = 0;
         }
+
         checkDate = checkDate.plus({ [periodUnit]: 1 });
     }
+
 
     habit.streak = Math.max(0, currentStreak);
     habit.longestStreak = longestStreak;
