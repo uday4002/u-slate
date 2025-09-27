@@ -12,11 +12,16 @@ const PUBLIC_PATHS = [
     "/api/auth/verify-otp",
     "/api/auth/forgot-password",
     "/api/auth/reset-password",
+    "/api/cron",
 ];
 
 export function middleware(req: NextRequest) {
     const { pathname } = req.nextUrl;
     const token = req.cookies.get("authToken")?.value;
+
+    if (pathname.startsWith("/api/cron")) {
+        return NextResponse.next();
+    }
 
     // Allow public paths without auth
     if (PUBLIC_PATHS.some(path => pathname === path || pathname.startsWith(path + "/"))) {
